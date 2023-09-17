@@ -82,8 +82,9 @@ def help(message):
     bot.send_message(message.chat.id, '''/add - добавить задачу
 /edit - изменить задачу
 /close - закрыть задачу
-/list - список задач
+/check - список задач
 /change_notification - сменить время напоминания
+/report - оставить отчет об ошибке
     
     ''')
 
@@ -155,6 +156,27 @@ def edit(message):
     db.close()
 
 
+
+@bot.message_handler(commands=['close'])
+def close(message):
+    db = sqlite3.connect('users_data.sql')
+    cursor = db.cursor()
+    cursor.execute(f'SELECT task_name, task_description FROM chat{message.chat.id}')
+    all_data = cursor.fetchall()
+    num = 0
+    bot.send_message(message.chat.id, '<b>Выберите номер задачи для закрытия:</b>', parse_mode='html')
+    for i in all_data:
+        num += 1
+        bot.send_message(message.chat.id, f'{num}) {i[0]}')
+    markup = types.InlineKeyboardMarkup(row_width=5)
+    for i in range(num):
+        btn = types.InlineKeyboardButton(i + 1, callback_data=f'user_close_task={i + 1}')
+        markup.add(btn)
+        print(f'user_close_task={i + 1}')
+    bot.send_message(message.chat.id, 'Нажмите на соответствующую кнопку:', reply_markup=markup)
+    db.close()
+
+
 @bot.message_handler(commands=['check'])
 def check(message):
     db = sqlite3.connect('users_data.sql')
@@ -200,6 +222,17 @@ def callback(callback):
         data = cursor.fetchone()
         bot.send_message(callback.message.chat.id, f'<b>{data[0]}</b>\n{data[1]}', parse_mode='html')
         db.close()
+
+    if callback.data.split('=')[0] == 'user_close_task':
+        try:
+            btn_num = int(callback.data.split('=')[1])
+            db = sqlite3.connect('users_data.sql')
+            cursor = db.cursor()
+            cursor.execute(f'DELETE FROM chat{callback.message.chat.id} WHERE rowid = {btn_num}')
+            db.commit()
+            db.close()
+        except Exception as ex:
+            bot.send_message(callback.message.chat.id, f'Ошибка СУБД: {ex}')
 
     if callback.data.split(':')[0] == 'user_edit_name':
         id = callback.data.split(':')[1]
