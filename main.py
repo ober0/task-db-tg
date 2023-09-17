@@ -1,24 +1,57 @@
 import telebot
 import sqlite3
 from telebot import types
-import datetime
+from datetime import datetime
+import threading
+import time
 
 bot = telebot.TeleBot('6426305632:AAEzKdiJQVOloUm0cdhSNTpNLktmXZptgbw')
 
 default_notification = 7
 
-def user_set_new_discription(message, id, rowid):
-    new_text = str(message.text)
-    # try:
+
+def send_notification(time):
     db = sqlite3.connect('users_data.sql')
     cursor = db.cursor()
-    cursor.execute(f'UPDATE chat{id} SET task_description = ? WHERE rowid = ?', (new_text, rowid))
-    db.commit()
+    cursor.execute(f'SELECT id FROM users_notification WHERE notif = {time}')
+    users = cursor.fetchall()
     db.close()
-    bot.send_message(id, 'Успешно!')
-    # except Exception as ex:
-    #     bot.send_message(id, f'Произошла ошибка СУБД: {ex}, повторите попытку!')
-    #     bot.register_next_step_handler(message, user_set_new_discription, id, rowid)
+    user_lst = []
+    for i in users:
+        i = i[0]
+        if not i in user_lst:
+            user_lst.append(i)
+    db = sqlite3.connect('users_data.sql')
+    cursor = db.cursor()
+    for i in user_lst:
+        cursor.execute(f'SELECT task_name FROM chat{i}')
+        tasks = cursor.fetchall()
+        bot.send_message(i, 'Здравствуйте! Ваши не выполненные задачи:')
+        for j in tasks:
+            bot.send_message(i, j[0])
+        bot.send_message(i, 'Подробнее:\n/check')
+
+
+# Главная функция для проверки времени и отправки уведомления
+def check_time_and_send_notification():
+    while True:
+        current_time = datetime.now().time()
+        send_notification(current_time.hour)
+        time.sleep(3600)
+
+
+def user_set_new_discription(message, id, rowid):
+    new_text = str(message.text)
+    try:
+        db = sqlite3.connect('users_data.sql')
+        cursor = db.cursor()
+        cursor.execute(f'UPDATE chat{id} SET task_description = ? WHERE rowid = ?', (new_text, rowid))
+        db.commit()
+        db.close()
+        bot.send_message(id, 'Успешно!')
+    except Exception as ex:
+        bot.send_message(id, f'Произошла ошибка СУБД: {ex}, повторите попытку!')
+        bot.register_next_step_handler(message, user_set_new_discription, id, rowid)
 
 
 def user_set_new_name(message, id, rowid):
@@ -357,4 +390,10 @@ def callback(callback):
         rowid = callback.data.split(':')[2]
         bot.send_message(callback.message.chat.id, 'Введите новое описание:')
         bot.register_next_step_handler(callback.message, user_set_new_discription, id, rowid)
+
+
+
+if __name__ == "__main__":
+    notification_thread = threading.Thread(target=check_time_and_send_notification)
+    notification_thread.start()
 bot.polling(none_stop=True)
